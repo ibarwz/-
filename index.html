@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      background: linear-gradient(to bottom, #0f0f0f, #1c1c1c);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: 100vh;
+      font-family: 'Rubik', sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+    h1 {
+      margin: 10px 0 0;
+      font-size: 2.2em;
+      color: #00ff99;
+      text-shadow: 0 0 10px #00ff99;
+    }
+    #score {
+      font-size: 1.4em;
+      color: #ffffff;
+      margin: 5px;
+    }
+    canvas {
+      background: repeating-linear-gradient(45deg, #006400, #006400 19px, #005000 20px);
+      border: 8px solid #ffffff;
+      box-shadow: 0 0 30px #00ff00;
+      margin-top: 10px;
+    }
+    .controls {
+      display: grid;
+      grid-template-areas: ". up ." "left . right" ". down .";
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      width: 70px;
+      height: 70px;
+      font-size: 2em;
+      background-color: #0077cc;
+      color: white;
+      border: none;
+      border-radius: 15px;
+      box-shadow: 0 0 15px #00aaff;
+      transition: transform 0.1s;
+    }
+    .btn:active {
+      transform: scale(0.95);
+    }
+    .up    { grid-area: up; }
+    .down  { grid-area: down; }
+    .left  { grid-area: left; }
+    .right { grid-area: right; }
+    #startScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 50px;
+    }
+    #nicknameInput {
+      font-size: 1.2em;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    #startButton {
+      font-size: 1.2em;
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #00aa88;
+      border: none;
+      border-radius: 8px;
+      color: white;
+    }
+    #leaderboard {
+      margin-top: 20px;
+      color: white;
+    }
+    table {
+      border-collapse: collapse;
+      width: 300px;
+    }
+    td, th {
+      border: 1px solid #ccc;
+      padding: 4px 8px;
+      text-align: left;
+    }
+    @media (max-width: 500px) {
+      canvas {
+        width: 90vw;
+        height: 90vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Змейка</h1>
+    <input id="nicknameInput" placeholder="Введите ник" maxlength="12" />
+    <button id="startButton">Начать игру</button>
+  </div>
+
+  <div id="gameContainer" style="display:none; flex-direction:column; align-items:center;">
+    <div id="score">Очки: 0</div>
+    <canvas id="game" width="400" height="400"></canvas>
+    <div class="controls">
+      <button class="btn up" ontouchstart="handleTouch(0, -1)" onclick="setDirection(0, -1)">⬆️</button>
+      <button class="btn left" ontouchstart="handleTouch(-1, 0)" onclick="setDirection(-1, 0)">⬅️</button>
+      <button class="btn right" ontouchstart="handleTouch(1, 0)" onclick="setDirection(1, 0)">➡️</button>
+      <button class="btn down" ontouchstart="handleTouch(0, 1)" onclick="setDirection(0, 1)">⬇️</button>
+    </div>
+    <div id="leaderboard">
+      <h2>Рекорды</h2>
+      <table>
+        <thead><tr><th>Игрок</th><th>Очки</th></tr></thead>
+        <tbody id="leaderboardBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const nicknameInput = document.getElementById('nicknameInput');
+    const startButton = document.getElementById('startButton');
+    const startScreen = document.getElementById('startScreen');
+    const gameContainer = document.getElementById('gameContainer');
+    const leaderboardBody = document.getElementById('leaderboardBody');
+
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+
+    let snake, direction, nextDirection, food, fakeFood, score, scoreFlash, playerName;
+
+    function initGame() {
+      snake = [{ x: 10, y: 10 }];
+      direction = { x: 0, y: 0 };
+      nextDirection = { x: 0, y: 0 };
+      food = generateFood();
+      fakeFood = generateFood();
+      score = 0;
+      scoreFlash = 0;
+      scoreEl.textContent = 'Очки: 0';
+    }
+
+    function drawTile(x, y, color, round = false, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      if (round) {
+        ctx.beginPath();
+        ctx.arc(x * gridSize + gridSize / 2, y * gridSize + gridSize / 2, gridSize / 2.5, 0, 2 * Math.PI);
+        ctx.fill();
+      } else {
+        ctx.fillRect(x * gridSize + 1, y * gridSize + 1, gridSize - 2, gridSize - 2);
+      }
+      ctx.restore();
+    }
+
+    function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawTile(fakeFood.x, fakeFood.y, 'yellow', true, 0.8);
+
+      if (scoreFlash > 0) {
+        drawTile(food.x, food.y, '#ff4444', true, scoreFlash);
+        scoreFlash -= 0.05;
+      } else {
+        drawTile(food.x, food.y, '#ff4444', true);
+      }
+
+      const head = { x: (snake[0].x + direction.x + tileCount) % tileCount,
+                     y: (snake[0].y + direction.y + tileCount) % tileCount };
+
+      snake.unshift(head);
+
+      if (head.x === food.x && head.y === food.y) {
+        score++;
+        scoreEl.textContent = `Очки: ${score}`;
+        food = generateFood();
+        fakeFood = generateFood();
+        scoreFlash = 1;
+      } else if (head.x === fakeFood.x && head.y === fakeFood.y) {
+        endGame();
+        return;
+      } else {
+        snake.pop();
+      }
+
+      snake.forEach((segment, index) => {
+        const color = index === 0 ? '#00ccff' : '#0099dd';
+        drawTile(segment.x, segment.y, color);
+      });
+
+      if (snake.slice(1).some(s => s.x === head.x && s.y === head.y)) {
+        endGame();
+        return;
+      }
+
+      direction = nextDirection;
+    }
+
+    function endGame() {
+      alert(`Игра окончена! Ваш результат: ${score}`);
+      saveScore(playerName, score);
+      loadLeaderboard();
+      startScreen.style.display = 'flex';
+      gameContainer.style.display = 'none';
+    }
+
+    function generateFood() {
+      let newFood;
+      do {
+        newFood = {
+          x: Math.floor(Math.random() * tileCount),
+          y: Math.floor(Math.random() * tileCount)
+        };
+      } while (snake.some(segment => segment.x === newFood.x && segment.y === newFood.y));
+      return newFood;
+    }
+
+    function setDirection(x, y) {
+      if ((direction.x !== 0 && x !== 0) || (direction.y !== 0 && y !== 0)) return;
+      nextDirection = { x, y };
+    }
+
+    function handleTouch(x, y) {
+      setDirection(x, y);
+    }
+
+    window.addEventListener('keydown', e => {
+      switch (e.key) {
+        case 'ArrowUp': setDirection(0, -1); break;
+        case 'ArrowDown': setDirection(0, 1); break;
+        case 'ArrowLeft': setDirection(-1, 0); break;
+        case 'ArrowRight': setDirection(1, 0); break;
+      }
+    });
+
+    const STORAGE_KEY = 'snake_leaderboard';
+
+    function loadLeaderboard() {
+      let leaderboard = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      leaderboard.sort((a, b) => b.score - a.score);
+      leaderboardBody.innerHTML = '';
+      leaderboard.slice(0, 10).forEach(({name, score}) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(name)}</td><td>${score}</td>`;
+        leaderboardBody.appendChild(tr);
+      });
+    }
+
+    function saveScore(name, score) {
+      if (score === 0) return;
+      let leaderboard = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      const existing = leaderboard.find(p => p.name === name);
+      if (existing) {
+        if (score > existing.score) existing.score = score;
+      } else {
+        leaderboard.push({ name, score });
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(leaderboard));
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[m]);
+    }
+
+    startButton.addEventListener('click', () => {
+      const name = nicknameInput.value.trim();
+      if (name.length === 0) return alert('Введите ник!');
+      playerName = name;
+      startScreen.style.display = 'none';
+      gameContainer.style.display = 'flex';
+      initGame();
+    });
+
+    loadLeaderboard();
+    setInterval(drawGame, 150);
+  </script>
+</body>
+</html>
